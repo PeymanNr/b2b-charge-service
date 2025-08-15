@@ -1,0 +1,169 @@
+{% extends "admin/base_site.html" %}
+{% load i18n admin_urls static admin_modify %}
+
+{% block title %}{{ title }} | {{ site_title|default:_('Django site admin') }}{% endblock %}
+
+{% block extrastyle %}
+    {{ block.super }}
+    <link rel="stylesheet" type="text/css" href="{% static 'admin/css/forms.css' %}">
+    <style>
+        .form-row {
+            overflow: hidden;
+            padding: 10px;
+            margin-bottom: 10px;
+        }
+        .form-row label {
+            float: left;
+            width: 150px;
+            font-weight: bold;
+            color: #666;
+        }
+        .form-row input, .form-row textarea {
+            margin-left: 160px;
+        }
+        .submit-row {
+            padding: 12px 14px;
+            margin: 0 0 20px;
+            background: #f8f8f8;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            text-align: right;
+        }
+        .default {
+            background: #417690;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-left: 10px;
+        }
+        .default:hover {
+            background: #205067;
+        }
+        .cancel-link {
+            background: #ba2121;
+            color: white;
+            text-decoration: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+        }
+        .cancel-link:hover {
+            background: #a41515;
+            color: white;
+        }
+        .credit-info {
+            background: #f0f8ff;
+            border: 1px solid #b8d4f0;
+            padding: 15px;
+            margin-bottom: 20px;
+            border-radius: 5px;
+        }
+        .credit-info h3 {
+            margin-top: 0;
+            color: #2c5282;
+        }
+        .info-item {
+            margin: 8px 0;
+        }
+        .info-label {
+            font-weight: bold;
+            color: #4a5568;
+            display: inline-block;
+            width: 120px;
+        }
+        .amount-highlight {
+            color: #e53e3e;
+            font-weight: bold;
+            font-size: 1.1em;
+        }
+        .vendor-highlight {
+            color: #2d3748;
+            font-weight: bold;
+        }
+    </style>
+{% endblock %}
+
+{% block content %}
+<div id="content-main">
+    <div class="credit-info">
+        <h3>🔍 اطلاعات درخواست اعتبار</h3>
+        <div class="info-item">
+            <span class="info-label">فروشنده:</span>
+            <span class="vendor-highlight">{{ credit_request.vendor.name }}</span>
+        </div>
+        <div class="info-item">
+            <span class="info-label">مبلغ:</span>
+            <span class="amount-highlight">{{ credit_request.amount|floatformat:0 }} تومان</span>
+        </div>
+        <div class="info-item">
+            <span class="info-label">تاریخ درخواست:</span>
+            <span>{{ credit_request.created_at|date:"Y/m/d H:i" }}</span>
+        </div>
+        <div class="info-item">
+            <span class="info-label">وضعیت فعلی:</span>
+            <span>{{ credit_request.get_status_display }}</span>
+        </div>
+    </div>
+
+    <form method="post" id="reject-form">
+        {% csrf_token %}
+
+        <div>
+            <fieldset class="module aligned">
+                <h2>❌ رد درخواست اعتبار</h2>
+
+                <div class="form-row">
+                    <div>
+                        <label for="id_reason" class="required">دلیل رد درخواست:</label>
+                        <textarea
+                            name="reason"
+                            id="id_reason"
+                            cols="80"
+                            rows="5"
+                            required
+                            placeholder="لطفاً دلیل رد درخواست را به طور کامل وارد کنید..."
+                            style="width: 100%; max-width: 600px; font-family: Tahoma, Arial, sans-serif; font-size: 13px; direction: rtl;"
+                        ></textarea>
+                        <p class="help">
+                            <small style="color: #666;">
+                                💡 این دلیل به فروشنده نمایش داده خواهد شد. لطفاً دقیق و مفید باشد.
+                            </small>
+                        </p>
+                    </div>
+                </div>
+            </fieldset>
+        </div>
+
+        <div class="submit-row">
+            <input type="submit" value="✅ تأیید رد درخواست" class="default" name="_reject"
+                   onclick="return confirm('آیا از رد این درخواست اطمینان دارید؟')">
+            <a href="{% url 'admin:credits_creditrequest_changelist' %}"
+               class="cancel-link">
+                ❌ انصراف
+            </a>
+        </div>
+    </form>
+
+    <script>
+        document.getElementById('reject-form').addEventListener('submit', function(e) {
+            var reason = document.getElementById('id_reason').value.trim();
+            if (reason.length < 10) {
+                alert('دلیل رد باید حداقل 10 کاراکتر باشد.');
+                e.preventDefault();
+                return false;
+            }
+
+            if (!confirm('آیا از رد این درخواست اطمینان دارید؟\n\nفروشنده: ' +
+                        '{{ credit_request.vendor.name }}\n' +
+                        'مبلغ: {{ credit_request.amount|floatformat:0 }} تومان')) {
+                e.preventDefault();
+                return false;
+            }
+        });
+
+        // Auto focus on reason textarea
+        document.getElementById('id_reason').focus();
+    </script>
+</div>
+{% endblock %}
