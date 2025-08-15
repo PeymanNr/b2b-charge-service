@@ -1,19 +1,25 @@
 """
-Test Cases برای Balance Reconciliation در اپ transactions
+Test Cases for Balance Reconciliation in transactions app
 """
+
+import os
+import sys
+import django
+from django.conf import settings
+
+# Django setup before importing models
+if not settings.configured:
+    os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'config.settings')
+    django.setup()
 
 import unittest
 from decimal import Decimal
 from django.test import TestCase
-from django.db import transaction
 from vendors.models import Vendor
-from transactions.models import Transaction
 from transactions.services import BalanceReconciliationService
-from credits.models import CreditRequest
-from charges.models import Charge
-from utils.enums import TransactionType, CreditRequestStatus
+from utils.enums import TransactionType
 from charges.services import ChargeManagement
-from credits.services import CreditService, CreditManagement
+from credits.services import CreditManagement
 import threading
 import time
 import random
@@ -21,42 +27,57 @@ import random
 
 class TransactionsBalanceReconciliationTestCase(TestCase):
     """
-    تست همخوانی حسابداری در اپ transactions
+    Test cases for accounting reconciliation in transactions app
     """
 
     def setUp(self):
-        """ایجاد داده‌های تست"""
+        """Create test data"""
+        from django.contrib.auth.models import User
+
+        # Create users for vendors
+        user1 = User.objects.create_user(
+            username='vendor1_user',
+            email='vendor1@example.com',
+            password='testpass123'
+        )
+
+        user2 = User.objects.create_user(
+            username='vendor2_user',
+            email='vendor2@example.com',
+            password='testpass123'
+        )
+
         self.vendor1 = Vendor.objects.create(
-            name="فروشنده اول",
-            phone="09123456789",
+            user=user1,
+            name="First Vendor",
             balance=Decimal('0'),
-            daily_limit=Decimal('10000000'),  # 10 میلیون
+            daily_limit=Decimal('10000000'),  # 10 million
             is_active=True
         )
 
         self.vendor2 = Vendor.objects.create(
-            name="فروشنده دوم",
-            phone="09987654321",
+            user=user2,
+            name="Second Vendor",
             balance=Decimal('0'),
-            daily_limit=Decimal('5000000'),   # 5 میلیون
+            daily_limit=Decimal('5000000'),   # 5 million
             is_active=True
         )
 
     def test_balance_reconciliation_service_basic(self):
         """
-        تست اصلی BalanceReconciliationService
+        Basic test for BalanceReconciliationService
         """
         print("\n=== Testing Balance Reconciliation Service ===")
 
-        # افزایش اعتبار
+        # Credit increase
         credit_amount = Decimal('1000000')  # 1M
         CreditManagement.increase_balance(self.vendor1, credit_amount)
 
-        # فروش شارژ
+        # Charge sale
         charge_amount = Decimal('50000')    # 50K
         ChargeManagement.charge_phone(self.vendor1, "09123456789", charge_amount)
 
-        # بررسی همخوانی
+        # Check reconciliation
         result = BalanceReconciliationService.balance_reconciliation(self.vendor1)
 
         print(f"Stored Balance: {result['stored_balance']:,}")
@@ -73,11 +94,11 @@ class TransactionsBalanceReconciliationTestCase(TestCase):
 
     def test_calculated_balance_method(self):
         """
-        تست متد calculated_balance
+        Test calculated_balance method
         """
         print("\n=== Testing Calculated Balance Method ===")
 
-        # تراکنش‌های مختلف
+        # Various transactions
         amounts = [
             (TransactionType.CREDIT, Decimal('500000')),
             (TransactionType.CREDIT, Decimal('300000')),
@@ -96,14 +117,14 @@ class TransactionsBalanceReconciliationTestCase(TestCase):
                 ChargeManagement.charge_phone(self.vendor2, f"091234{amount}", amount)
                 expected_balance -= amount
 
-        # محاسبه موجودی با service
+        # Calculate balance using service
         calculated = BalanceReconciliationService.calculated_balance(self.vendor2)
 
         print(f"Expected: {expected_balance:,}")
         print(f"Calculated: {calculated:,}")
         print(f"Vendor DB Balance: {self.vendor2.balance:,}")
 
-        # بررسی
+        # Verification
         self.vendor2.refresh_from_db()
         self.assertEqual(calculated, expected_balance)
         self.assertEqual(self.vendor2.balance, expected_balance)
@@ -112,22 +133,22 @@ class TransactionsBalanceReconciliationTestCase(TestCase):
 
     def test_reconcile_all_balances(self):
         """
-        تست reconcile_all_balances برای چند فروشنده
+        Test reconcile_all_balances for multiple vendors
         """
         print("\n=== Testing Reconcile All Balances ===")
 
-        # تراکنش برای vendor1
+        # Transaction for vendor1
         CreditManagement.increase_balance(self.vendor1, Decimal('2000000'))
         ChargeManagement.charge_phone(self.vendor1, "09111111111", Decimal('500000'))
 
-        # تراکنش برای vendor2
+        # Transaction for vendor2
         CreditManagement.increase_balance(self.vendor2, Decimal('1500000'))
         ChargeManagement.charge_phone(self.vendor2, "09222222222", Decimal('300000'))
 
-        # بررسی همه
+        # Check all vendors
         results = BalanceReconciliationService.reconcile_all_balances()
 
-        # بررسی summary
+        # Check summary
         summary = results['summary']
         print(f"Total Vendors: {summary['total_vendors']}")
         print(f"Consistent: {summary['consistent_vendors']}")
@@ -140,7 +161,7 @@ class TransactionsBalanceReconciliationTestCase(TestCase):
         self.assertEqual(summary['inconsistent_vendors'], 0)
         self.assertEqual(summary['consistency_percentage'], 100.0)
 
-        # بررسی system stats
+        # Check system stats
         stats = summary['system_stats']
         self.assertEqual(stats['total_credits'], Decimal('3500000'))  # 2M + 1.5M
         self.assertEqual(stats['total_sales'], Decimal('800000'))     # 500K + 300K
@@ -150,28 +171,28 @@ class TransactionsBalanceReconciliationTestCase(TestCase):
 
     def test_report_generation(self):
         """
-        تست تولید گزارش
+        Test report generation
         """
         print("\n=== Testing Report Generation ===")
 
-        # ایجاد تراکنش‌ها
+        # Create transactions
         CreditManagement.increase_balance(self.vendor1, Decimal('1000000'))
         ChargeManagement.charge_phone(self.vendor1, "09123456789", Decimal('250000'))
 
-        # تولید گزارش برای vendor خاص
+        # Generate report for specific vendor
         report_single = BalanceReconciliationService.generate_reconciliation_report(self.vendor1.id)
 
-        # بررسی محتوای گزارش
-        self.assertIn("گزارش همخوانی سیستم حسابداری", report_single)
-        self.assertIn(f"فروشنده {self.vendor1.id}", report_single)
-        self.assertIn("سازگار", report_single)
-        self.assertIn("750,000", report_single)  # موجودی باقیمانده
+        # Check report content
+        self.assertIn("Balance Reconciliation Report", report_single)
+        self.assertIn(f"Vendor {self.vendor1.id}", report_single)
+        self.assertIn("Consistent", report_single)
+        self.assertIn("750,000", report_single)  # Remaining balance
 
-        # تولید گزارش کلی
+        # Generate general report
         report_all = BalanceReconciliationService.generate_reconciliation_report()
 
-        self.assertIn("خلاصه کلی", report_all)
-        self.assertIn("آمار سیستم", report_all)
+        self.assertIn("Overall Summary", report_all)
+        self.assertIn("System Statistics", report_all)
 
         print(f"Single Report Length: {len(report_single)} chars")
         print(f"All Report Length: {len(report_all)} chars")
@@ -179,20 +200,20 @@ class TransactionsBalanceReconciliationTestCase(TestCase):
 
     def test_concurrent_transactions_consistency(self):
         """
-        تست همخوانی تحت تراکنش‌های موازی
+        Test consistency under concurrent transactions
         """
         print("\n=== Testing Concurrent Transactions Consistency ===")
 
-        # اعتبار اولیه
+        # Initial credit
         initial_amount = Decimal('5000000')  # 5M
         CreditManagement.increase_balance(self.vendor1, initial_amount)
 
-        # لیست برای ذخیره نتایج
+        # Lists to store results
         successful_charges = []
         errors = []
 
         def charge_worker(start_idx, count):
-            """Worker برای شارژ موازی"""
+            """Worker for concurrent charging"""
             for i in range(count):
                 try:
                     phone = f"091234{start_idx:02d}{i:02d}"
@@ -207,12 +228,12 @@ class TransactionsBalanceReconciliationTestCase(TestCase):
                     else:
                         errors.append(message)
 
-                    time.sleep(random.uniform(0.001, 0.005))  # تاخیر کوتاه
+                    time.sleep(random.uniform(0.001, 0.005))  # Short delay
 
                 except Exception as e:
                     errors.append(str(e))
 
-        # ایجاد threads
+        # Create threads
         threads = []
         charges_per_thread = 50
         num_threads = 4
@@ -227,13 +248,13 @@ class TransactionsBalanceReconciliationTestCase(TestCase):
             threads.append(thread)
             thread.start()
 
-        # انتظار برای تکمیل
+        # Wait for completion
         for thread in threads:
             thread.join()
 
         end_time = time.time()
 
-        # تحلیل نتایج
+        # Analyze results
         total_successful = len(successful_charges)
         total_errors = len(errors)
         total_charged = sum(successful_charges)
@@ -243,7 +264,7 @@ class TransactionsBalanceReconciliationTestCase(TestCase):
         print(f"Total Errors: {total_errors}")
         print(f"Total Charged Amount: {total_charged:,}")
 
-        # بررسی همخوانی نهایی
+        # Final reconciliation check
         self.vendor1.refresh_from_db()
         reconciliation = BalanceReconciliationService.balance_reconciliation(self.vendor1)
 
@@ -261,25 +282,25 @@ class TransactionsBalanceReconciliationTestCase(TestCase):
 
     def test_large_volume_reconciliation(self):
         """
-        تست performance با حجم بالای تراکنش
+        Performance test with high volume transactions
         """
         print("\n=== Testing Large Volume Reconciliation ===")
 
-        # تراکنش‌های زیاد
+        # High volume transactions
         total_credits = Decimal('0')
         total_sales = Decimal('0')
 
         start_time = time.time()
 
-        # 20 کردیت
+        # 20 credits
         for i in range(20):
             amount = Decimal(f"{(i+1)*10000}")  # 10K, 20K, 30K, ...
             CreditManagement.increase_balance(self.vendor1, amount)
             total_credits += amount
 
-        # 100 فروش
+        # 100 sales
         for i in range(100):
-            amount = Decimal('5000')  # 5K هرکدام
+            amount = Decimal('5000')  # 5K each
             phone = f"091234{i:04d}"
             success, _, _ = ChargeManagement.charge_phone(self.vendor1, phone, amount)
             if success:
@@ -287,7 +308,7 @@ class TransactionsBalanceReconciliationTestCase(TestCase):
 
         transaction_time = time.time() - start_time
 
-        # بررسی همخوانی
+        # Check reconciliation
         reconciliation_start = time.time()
         result = BalanceReconciliationService.balance_reconciliation(self.vendor1)
         reconciliation_time = time.time() - reconciliation_start
@@ -307,14 +328,14 @@ class TransactionsBalanceReconciliationTestCase(TestCase):
         self.assertEqual(result['stored_balance'], expected_balance)
         self.assertEqual(result['calculated_balance'], expected_balance)
 
-        # Performance assertion - بررسی اینکه reconciliation سریع باشد
-        self.assertLess(reconciliation_time, 1.0)  # کمتر از 1 ثانیه
+        # Performance assertion - ensure reconciliation is fast
+        self.assertLess(reconciliation_time, 1.0)  # Less than 1 second
 
         print("✅ Large Volume Reconciliation Test PASSED!")
 
     def tearDown(self):
-        """پاکسازی"""
-        # Django TestCase خودکار rollback می‌کند
+        """Cleanup"""
+        # Django TestCase automatically performs rollback
         pass
 
 
