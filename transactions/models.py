@@ -21,14 +21,6 @@ class TransactionManager(models.Manager):
 
         return query.order_by('-created_at')
 
-    def get_credits(self):
-        """Get all credits transactions"""
-        return self.filter(transaction_type=TransactionType.CREDIT.value)
-
-    def get_sales(self):
-        """Get all sale transactions"""
-        return self.filter(transaction_type=TransactionType.SALE.value)
-
 
 class Transaction(UUIDBaseModel, TimeStampedModel):
     vendor = models.ForeignKey(Vendor, on_delete=models.CASCADE, related_name='transactions')
