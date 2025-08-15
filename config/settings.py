@@ -10,6 +10,7 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/4.2/ref/settings/
 """
 import os
+from datetime import timedelta
 from pathlib import Path
 from dotenv import load_dotenv
 
@@ -23,7 +24,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # See https://docs.djangoproject.com/en/4.2/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-afkb%5t+l2936$by0v%sz%4_6(3)0=(-4z4=+7bq%*ls@l+@(y'
+SECRET_KEY = os.getenv("SECRET_KEY")
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.getenv("DEBUG")
@@ -42,7 +43,11 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     "rest_framework",
     "django_filters",
-    "vendors"
+    "vendors",
+    "transactions",
+    "credits",
+    "charges",
+    "drf_yasg"
 ]
 
 MIDDLEWARE = [
@@ -55,7 +60,7 @@ MIDDLEWARE = [
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
 
-ROOT_URLCONF = 'b2b_charge_service.urls'
+ROOT_URLCONF = 'config.urls'
 
 TEMPLATES = [
     {
@@ -109,7 +114,18 @@ AUTH_PASSWORD_VALIDATORS = [
     },
 ]
 
+REST_FRAMEWORK = {
+    "DEFAULT_AUTHENTICATION_CLASSES": (
+        "rest_framework_simplejwt.authentication.JWTAuthentication",
+        "rest_framework.authentication.SessionAuthentication",
+    ),
+    "DEFAULT_PERMISSION_CLASSES": ("rest_framework.permissions.IsAuthenticated",),
+}
 
+SIMPLE_JWT = {
+    "ACCESS_TOKEN_LIFETIME": timedelta(days=1),
+    "REFRESH_TOKEN_LIFETIME": timedelta(days=30),
+}
 # Internationalization
 # https://docs.djangoproject.com/en/4.2/topics/i18n/
 
@@ -131,3 +147,170 @@ STATIC_URL = 'static/'
 # https://docs.djangoproject.com/en/4.2/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+# ========================================
+# 🔒 SECURITY & RACE CONDITION SETTINGS
+# ========================================
+
+# Security Settings
+DISTRIBUTED_LOCK_TIMEOUT = 30
+IDEMPOTENCY_TIMEOUT = 86400  # 24 hours
+DOUBLE_SPENDING_TIMEOUT = 300  # 5 minutes
+
+# Logging Configuration
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'verbose': {
+            'format': '{levelname} {asctime} {module} {process:d} {thread:d} {message}',
+            'style': '{',
+        },
+        'simple': {
+            'format': '{levelname} {message}',
+            'style': '{',
+        },
+        'security_format': {
+            'format': '[SECURITY] {asctime} {levelname} {module} - {message}',
+            'style': '{',
+        },
+        'transaction_format': {
+            'format': '[TRANSACTION] {asctime} {levelname} {module} - {message}',
+            'style': '{',
+        },
+    },
+    'filters': {
+        'require_debug_true': {
+            '()': 'django.utils.log.RequireDebugTrue',
+        },
+        'require_debug_false': {
+            '()': 'django.utils.log.RequireDebugFalse',
+        },
+    },
+    'handlers': {
+        'console': {
+            'level': 'INFO',
+            'filters': ['require_debug_true'],
+            'class': 'logging.StreamHandler',
+            'formatter': 'simple'
+        },
+        'file': {
+            'level': 'INFO',
+            'class': 'logging.handlers.RotatingFileHandler',
+            'filename': BASE_DIR / 'logs' / 'application.log',
+            'maxBytes': 1024*1024*15,  # 15MB
+            'backupCount': 10,
+            'formatter': 'verbose',
+        },
+        'security_file': {
+            'level': 'INFO',
+            'class': 'logging.handlers.RotatingFileHandler',
+            'filename': BASE_DIR / 'logs' / 'security.log',
+            'maxBytes': 1024*1024*15,  # 15MB
+            'backupCount': 10,
+            'formatter': 'security_format',
+        },
+        'transaction_file': {
+            'level': 'INFO',
+            'class': 'logging.handlers.RotatingFileHandler',
+            'filename': BASE_DIR / 'logs' / 'transactions.log',
+            'maxBytes': 1024*1024*15,  # 15MB
+            'backupCount': 10,
+            'formatter': 'transaction_format',
+        },
+        'error_file': {
+            'level': 'ERROR',
+            'class': 'logging.handlers.RotatingFileHandler',
+            'filename': BASE_DIR / 'logs' / 'error.log',
+            'maxBytes': 1024*1024*15,  # 15MB
+            'backupCount': 10,
+            'formatter': 'verbose',
+        },
+    },
+    'root': {
+        'level': 'WARNING',
+        'handlers': ['console', 'file', 'error_file'],
+    },
+    'loggers': {
+        'django': {
+            'level': 'INFO',
+            'handlers': ['console', 'file', 'error_file'],
+            'propagate': True,
+        },
+        'security_audit': {
+            'level': 'INFO',
+            'handlers': ['security_file', 'console'],
+            'propagate': False,
+        },
+        'security_managers': {
+            'level': 'INFO',
+            'handlers': ['security_file', 'console'],
+            'propagate': False,
+        },
+        'credits.services': {
+            'level': 'INFO',
+            'handlers': ['transaction_file', 'security_file', 'console', 'error_file'],
+            'propagate': False,
+        },
+        'transactions.services': {
+            'level': 'INFO',
+            'handlers': ['transaction_file', 'console', 'error_file'],
+            'propagate': False,
+        },
+        'credits.api.views': {
+            'level': 'INFO',
+            'handlers': ['transaction_file', 'console', 'error_file'],
+            'propagate': False,
+        },
+        'vendors.models': {
+            'level': 'INFO',
+            'handlers': ['transaction_file', 'console', 'error_file'],
+            'propagate': True,
+        },
+        'transactions.models': {
+            'level': 'INFO',
+            'handlers': ['transaction_file', 'console', 'error_file'],
+            'propagate': True,
+        },
+        'credits.models': {
+            'level': 'INFO',
+            'handlers': ['transaction_file', 'console', 'error_file'],
+            'propagate': True,
+        },
+        'vendors.api.views': {
+            'level': 'INFO',
+            'handlers': ['file', 'console', 'error_file'],
+            'propagate': True,
+        },
+    },
+}
+
+# Create logs directory if it doesn't exist
+LOGS_DIR = os.path.join(BASE_DIR, 'logs')
+os.makedirs(LOGS_DIR, exist_ok=True)
+
+# Redis Cache Configuration
+REDIS_HOST = os.getenv('REDIS_HOST', 'localhost')
+REDIS_PORT = os.getenv('REDIS_PORT', '6379')
+REDIS_DB = os.getenv('REDIS_DB', '0')
+REDIS_PASSWORD = os.getenv('REDIS_PASSWORD', '')
+
+REDIS_URL = f"redis://{REDIS_HOST}:{REDIS_PORT}/{REDIS_DB}"
+if REDIS_PASSWORD:
+    REDIS_URL = f"redis://:{REDIS_PASSWORD}@{REDIS_HOST}:{REDIS_PORT}/{REDIS_DB}"
+
+CACHES = {
+    'default': {
+        'BACKEND': 'django_redis.cache.RedisCache',
+        'LOCATION': REDIS_URL,
+        'OPTIONS': {
+            'CLIENT_CLASS': 'django_redis.client.DefaultClient',
+
+            'COMPRESSOR': 'django_redis.compressors.zlib.ZlibCompressor',
+        },
+        'TIMEOUT': None,
+        'KEY_PREFIX': 'b2b_charge'
+    }
+}
+
+CACHE_TTL_DEFAULT = 60
