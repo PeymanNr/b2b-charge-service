@@ -21,11 +21,9 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import threading
 
 
-# Setup Django environment BEFORE importing Django modules
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'config.settings')
 django.setup()
 
-# NOW import Django modules after setup
 from django.contrib.auth.models import User
 from vendors.models import Vendor
 from credits.models import CreditRequest
@@ -57,7 +55,6 @@ class SimpleB2BTestCase:
         """Setup initial test data - 2 vendors"""
         print("🔧 Setting up test data...")
         
-        # Create admin user
         try:
             self.admin_user = User.objects.get(username='admin')
         except User.DoesNotExist:
@@ -67,7 +64,6 @@ class SimpleB2BTestCase:
                 password='admin123'
             )
         
-        # Create 2 vendors with unique usernames
         import time
         timestamp = int(time.time())
 
@@ -93,10 +89,8 @@ class SimpleB2BTestCase:
                 print(f"❌ Error creating vendor {i}: {e}")
                 self.results['errors'].append(f"Vendor creation error: {e}")
 
-        # Check if we have vendors to work with
         if len(self.vendors) == 0:
             print("❌ No vendors created. Trying to use existing vendors...")
-            # Try to get existing vendors
             existing_vendors = list(Vendor.objects.all()[:2])
             if existing_vendors:
                 self.vendors = existing_vendors
@@ -180,7 +174,6 @@ class SimpleB2BTestCase:
     def execute_single_charge(self, vendor, phone_number, amount, operation_id):
         """Execute a single charge operation"""
         try:
-            # Generate unique idempotency key
             idempotency_key = f"charge_{vendor.id}_{operation_id}_{int(time.time() * 1000000)}"
             
             success, charge_obj, message = ChargeManagement.charge_phone(
@@ -225,7 +218,6 @@ class SimpleB2BTestCase:
                 future = executor.submit(self.execute_single_charge, vendor, phone, amount, op_id)
                 futures.append(future)
             
-            # Wait for all operations to complete
             for future in as_completed(futures):
                 try:
                     future.result()
@@ -241,10 +233,8 @@ class SimpleB2BTestCase:
         accounting_errors = []
         
         for vendor in self.vendors:
-            # Refresh vendor from database
             vendor.refresh_from_db()
             
-            # Calculate expected balance from transactions
             credit_transactions = Transaction.objects.filter(
                 vendor=vendor,
                 transaction_type=TransactionType.CREDIT,
@@ -312,29 +302,22 @@ class SimpleB2BTestCase:
         print("="*60)
         
         try:
-            # Setup
             self.setup_test_data()
             
-            # Credit operations
             credit_requests = self.create_credit_requests()
             self.approve_credit_requests(credit_requests)
             
-            # Generate charge operations
             operations = self.generate_charge_operations()
             
-            # Execute charges
             if parallel:
                 self.execute_charges_parallel(operations)
             else:
                 self.execute_charges_sequential(operations)
             
-            # Verify integrity
             accounting_errors = self.verify_accounting_integrity()
             
-            # Final report
             self.print_final_report()
             
-            # Test results
             execution_time = time.time() - start_time
             print(f"\n⏱️ Total Execution Time: {execution_time:.2f} seconds")
             
@@ -375,7 +358,6 @@ def main():
     print("=" * 60)
     print("Testing concurrent operations to verify race condition protection...")
 
-    # Run parallel test
     parallel_test_case = SimpleB2BTestCase()
     parallel_result = parallel_test_case.run_test(parallel=True)
 
