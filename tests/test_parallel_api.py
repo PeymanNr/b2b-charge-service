@@ -3,11 +3,11 @@
 Advanced Parallel API Test Case for B2B Charge Service
 =====================================================
 
-این تست API endpoints را به طور موازی تست می‌کند:
-- POST /api/charges/charge/ (شارژ همزمان)
-- POST /api/credits/request/ (درخواست اعتبار همزمان)
-- تست race condition در API layer
-- تست authentication و authorization تحت لود
+This test performs parallel testing of API endpoints:
+- POST /api/charges/charge/ (concurrent charging)
+- POST /api/credits/request/ (concurrent credit requests)
+- Race condition testing in API layer
+- Authentication and authorization under load testing
 """
 
 import os
@@ -32,7 +32,7 @@ from rest_framework_simplejwt.tokens import RefreshToken
 
 class ParallelAPITestCase:
     """
-    تست موازی کامل API endpoints با Django Test Client
+    Complete parallel testing of API endpoints using Django Test Client
     """
     
     def __init__(self):
@@ -51,7 +51,7 @@ class ParallelAPITestCase:
         self.lock = threading.Lock()
 
     def setup_test_users(self):
-        """ایجاد users و tokens برای تست API"""
+        """Create users and tokens for API testing"""
         print("🔧 Setting up API test users...")
         
         # Admin user
@@ -97,7 +97,7 @@ class ParallelAPITestCase:
             print(f"✅ Created API vendor: {vendor.name} (Balance: {vendor.balance})")
 
     def make_api_request(self, method, endpoint, data=None, token=None):
-        """Helper method برای API requests با Django Test Client"""
+        """Helper method for API requests using Django Test Client"""
         headers = {}
         if token:
             headers['HTTP_AUTHORIZATION'] = f'Bearer {token}'
@@ -133,7 +133,7 @@ class ParallelAPITestCase:
             return 500, {'error': str(e)}
 
     def parallel_credit_request_api(self, vendor, amount, request_id):
-        """تست موازی API ایجاد درخواست اعتبار"""
+        """Parallel testing of credit request API creation"""
         try:
             token = self.vendor_tokens[vendor.id]
             data = {
@@ -177,7 +177,7 @@ class ParallelAPITestCase:
             return 500, {'error': str(e)}
 
     def parallel_charge_api(self, vendor, phone_number, amount, request_id):
-        """تست موازی API شارژ تلفن"""
+        """Parallel testing of phone charge API"""
         try:
             token = self.vendor_tokens[vendor.id]
             data = {
@@ -316,7 +316,7 @@ class ParallelAPITestCase:
         self.print_api_test_results(time.time() - start_time)
 
     def print_api_test_results(self, execution_time):
-        """چاپ نتایج تست API"""
+        """Print API test results"""
         print("\n" + "="*60)
         print("📋 PARALLEL API TEST RESULTS")
         print("="*60)
@@ -354,7 +354,7 @@ class ParallelAPITestCase:
 
 
 def main():
-    """اجرای تست‌های موازی API"""
+    """Run the API parallel tests"""
     print("B2B Charge Service - Parallel API Test (Django Test Client)")
     print("Testing concurrent API calls and race conditions")
     print()
